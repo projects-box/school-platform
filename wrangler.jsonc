@@ -12,8 +12,7 @@
     {
       "binding": "DB",
       "database_name": "school-platform-db",
-      // Replace with the real database_id after running: wrangler d1 create school-platform-db
-      "database_id": "local-placeholder",
+      "database_id": "742cf8a0-d5e0-437a-8632-66c6cc12f5cd",
       "migrations_dir": "migrations"
     }
   ],
