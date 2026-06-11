@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", Tahoma, "Noto Sans Arabic", "Helvetica Neue", Arial, system-ui, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-slate-100);
+}
+
+/* Keep numbers readable inside RTL text */
+input[type="date"],
+input[type="time"],
+input[type="number"] {
+  direction: ltr;
+  text-align: right;
+}
