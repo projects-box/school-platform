@@ -14,11 +14,13 @@ export default function Assignments() {
   const toast = useToast();
   const canManage = user?.role === "super_admin" || user?.role === "school_admin" || user?.role === "teacher";
   const isStudent = user?.role === "student";
+  const isParent = user?.role === "parent";
 
   const [page, setPage] = useState(1);
   const [classId, setClassId] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [submitTarget, setSubmitTarget] = useState<AssignmentRow | null>(null);
+  const [parentTarget, setParentTarget] = useState<AssignmentRow | null>(null);
   const [subsTarget, setSubsTarget] = useState<AssignmentRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AssignmentRow | null>(null);
   const [busy, setBusy] = useState(false);
@@ -97,6 +99,11 @@ export default function Assignments() {
                       {a.my_submission_status ? "عرض / تعديل التسليم" : "تسليم الواجب"}
                     </Button>
                   )}
+                  {isParent && (
+                    <Button variant="secondary" onClick={() => setParentTarget(a)}>
+                      تسليم الواجب
+                    </Button>
+                  )}
                   {canManage && (
                     <>
                       <Button variant="ghost" onClick={() => setSubsTarget(a)}>التسليمات ({a.submissions_count ?? 0})</Button>
@@ -127,6 +134,16 @@ export default function Assignments() {
           onClose={() => setSubmitTarget(null)}
           onSaved={() => {
             setSubmitTarget(null);
+            reload();
+          }}
+        />
+      )}
+      {parentTarget && (
+        <ParentSubmitModal
+          assignment={parentTarget}
+          onClose={() => setParentTarget(null)}
+          onSaved={() => {
+            setParentTarget(null);
             reload();
           }}
         />
@@ -282,6 +299,101 @@ function SubmitModal({ assignment, onClose, onSaved }: { assignment: AssignmentR
             {!reviewed && (
               <Button type="submit" disabled={busy}>{busy ? "جارٍ التسليم..." : "تسليم"}</Button>
             )}
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+interface ParentChildSubmission {
+  student_id: string;
+  full_name: string;
+  submission_id: string | null;
+  submission_text: string | null;
+  submission_url: string | null;
+  status: "submitted" | "reviewed" | null;
+  feedback: string | null;
+}
+
+// Parent submits/edits an assignment on behalf of a linked child in that class.
+function ParentSubmitModal({ assignment, onClose, onSaved }: { assignment: AssignmentRow; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const { data, loading } = useApiData<{ assignment: Assignment; children: ParentChildSubmission[] }>(`/api/assignments/${assignment.id}`);
+  const children = data?.children ?? [];
+  const [selectedId, setSelectedId] = useState("");
+  const [text, setText] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const effectiveId = selectedId || children[0]?.student_id || "";
+  const child = children.find((c) => c.student_id === effectiveId) ?? null;
+  const reviewed = child?.status === "reviewed";
+  const textValue = text ?? child?.submission_text ?? "";
+  const urlValue = url ?? child?.submission_url ?? "";
+
+  const changeChild = (id: string) => {
+    setSelectedId(id);
+    setText(null);
+    setUrl(null);
+    setError(null);
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!effectiveId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/api/assignment-submissions", {
+        assignment_id: assignment.id,
+        student_id: effectiveId,
+        submission_text: textValue || null,
+        submission_url: urlValue || null,
+      });
+      toast("تم تسليم الواجب");
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "حدث خطأ غير متوقع");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`تسليم: ${assignment.title}`} open onClose={onClose}>
+      {loading ? (
+        <Spinner />
+      ) : children.length === 0 ? (
+        <EmptyState message="لا يوجد أبناء مرتبطون بهذا الفصل" />
+      ) : (
+        <form onSubmit={submit}>
+          {children.length > 1 ? (
+            <Field label="الابن" required>
+              <Select value={effectiveId} onChange={(e) => changeChild(e.target.value)}>
+                {children.map((c) => (
+                  <option key={c.student_id} value={c.student_id}>{c.full_name}</option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <p className="mb-3 text-sm text-slate-500">
+              التسليم نيابة عن: <span className="font-semibold text-slate-800">{children[0].full_name}</span>
+            </p>
+          )}
+          {reviewed && <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">تمت مراجعة التسليم ولا يمكن تعديله.</p>}
+          {child?.feedback && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ملاحظة المعلم: {child.feedback}</p>}
+          <Field label="الإجابة النصية">
+            <Textarea value={textValue} onChange={(e) => setText(e.target.value)} disabled={reviewed} rows={4} />
+          </Field>
+          <Field label="رابط خارجي للإجابة" hint="مثال: رابط Google Docs — لا يتم رفع ملفات في المنصة">
+            <Input type="url" value={urlValue} onChange={(e) => setUrl(e.target.value)} dir="ltr" placeholder="https://" disabled={reviewed} />
+          </Field>
+          {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={onClose}>إغلاق</Button>
+            {!reviewed && <Button type="submit" disabled={busy}>{busy ? "جارٍ التسليم..." : "تسليم"}</Button>}
           </div>
         </form>
       )}

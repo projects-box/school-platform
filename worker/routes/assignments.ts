@@ -1,7 +1,17 @@
 import { Hono } from "hono";
 import type { AppEnv, AppContext } from "../lib/app";
-import { inPlaceholders, isAdmin, studentScope, teacherScope, visibleClassIds } from "../lib/app";
+import { inPlaceholders, isAdmin, parentStudents, studentScope, teacherScope, visibleClassIds } from "../lib/app";
 import { badRequest, forbidden, notFound, paginated, pagination, readBody, uid, vDate, vStr, vUrl } from "../lib/http";
+
+interface ParentChildRow {
+  student_id: string;
+  full_name: string;
+  submission_id: string | null;
+  submission_text: string | null;
+  submission_url: string | null;
+  status: string | null;
+  feedback: string | null;
+}
 
 async function assertCanManageAssignment(c: AppContext, classId: string, teacherId?: string): Promise<string | null> {
   if (isAdmin(c)) return null;
@@ -127,7 +137,30 @@ assignments.get("/:id", async (c) => {
       .bind(row.id, scope.studentId)
       .first();
   }
-  return c.json({ assignment: row, my_submission: mySubmission });
+
+  // For a parent: their children in this assignment's class, each with their current submission.
+  let children: ParentChildRow[] | undefined = undefined;
+  if (user.role === "parent") {
+    const kids = (await parentStudents(c)).filter((k) => k.class_id === row.class_id);
+    if (kids.length) {
+      const { results } = await c.env.DB.prepare(
+        `SELECT s.id AS student_id, u.full_name,
+                sub.id AS submission_id, sub.submission_text, sub.submission_url, sub.status, sub.feedback
+         FROM students s
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN assignment_submissions sub ON sub.assignment_id = ? AND sub.student_id = s.id
+         WHERE s.id IN ${inPlaceholders(kids.length)}
+         ORDER BY u.full_name`,
+      )
+        .bind(row.id, ...kids.map((k) => k.id))
+        .all<ParentChildRow>();
+      children = results;
+    } else {
+      children = [];
+    }
+  }
+
+  return c.json({ assignment: row, my_submission: mySubmission, children });
 });
 
 assignments.patch("/:id", async (c) => {
@@ -185,24 +218,41 @@ assignments.get("/:id/submissions", async (c) => {
 
 export const submissions = new Hono<AppEnv>();
 
-// Student submits (text and/or external link only — no file uploads in the MVP).
+// Submit text and/or an external link only (no file uploads in the MVP).
+// A student submits for themselves; a parent submits on behalf of a linked child.
 submissions.post("/", async (c) => {
   const user = c.get("user");
-  if (user.role !== "student") throw forbidden();
-  const scope = await studentScope(c);
   const body = await readBody(c);
   const assignmentId = vStr(body, "assignment_id", { required: true })!;
 
+  // Resolve the target student and the class they belong to, based on role.
+  let studentId: string;
+  let studentClassId: string | null;
+  if (user.role === "student") {
+    const scope = await studentScope(c);
+    studentId = scope.studentId;
+    studentClassId = scope.classId;
+  } else if (user.role === "parent") {
+    const requestedStudentId = vStr(body, "student_id", { required: true })!;
+    const children = await parentStudents(c);
+    const child = children.find((s) => s.id === requestedStudentId);
+    if (!child) throw forbidden();
+    studentId = child.id;
+    studentClassId = child.class_id;
+  } else {
+    throw forbidden();
+  }
+
   const assignment = await c.env.DB.prepare("SELECT class_id FROM assignments WHERE id = ?").bind(assignmentId).first<{ class_id: string }>();
   if (!assignment) throw notFound();
-  if (!scope.classId || assignment.class_id !== scope.classId) throw forbidden();
+  if (!studentClassId || assignment.class_id !== studentClassId) throw forbidden();
 
   const text = vStr(body, "submission_text", { max: 4000 });
   const url = vUrl(body, "submission_url");
   if (!text && !url) throw badRequest("أدخل إجابة نصية أو رابطاً خارجياً");
 
   const existing = await c.env.DB.prepare("SELECT id, status FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?")
-    .bind(assignmentId, scope.studentId)
+    .bind(assignmentId, studentId)
     .first<{ id: string; status: string }>();
   if (existing) {
     if (existing.status === "reviewed") throw badRequest("تمت مراجعة التسليم، لا يمكن تعديله");
@@ -217,7 +267,7 @@ submissions.post("/", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO assignment_submissions (id, assignment_id, student_id, submission_text, submission_url) VALUES (?,?,?,?,?)",
   )
-    .bind(id, assignmentId, scope.studentId, text, url)
+    .bind(id, assignmentId, studentId, text, url)
     .run();
   return c.json({ id }, 201);
 });
