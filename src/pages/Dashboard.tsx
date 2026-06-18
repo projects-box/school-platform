@@ -3,7 +3,7 @@ import type { Announcement, DashboardData } from "../../shared/types";
 import { gradeStatus } from "../../shared/types";
 import { useApiData } from "../lib/useApi";
 import { useAuth } from "../lib/auth";
-import { ATTENDANCE_COLORS, ATTENDANCE_LABELS, formatDate } from "../lib/labels";
+import { ATTENDANCE_COLORS, ATTENDANCE_LABELS, formatDate, formatDateTime } from "../lib/labels";
 import { Badge, Card, EmptyState, ErrorState, ExternalLink, PageHeader, Spinner } from "../components/ui";
 
 function StatCard({ label, value, color = "text-teal-700" }: { label: string; value: number | string; color?: string }) {
@@ -46,7 +46,7 @@ function AnnouncementsList({ items }: { items: Announcement[] }) {
                   <p className="font-semibold text-slate-800">{a.title}</p>
                   {a.body && <p className="mt-1 text-sm text-slate-500 line-clamp-2">{a.body}</p>}
                   <p className="mt-1 text-xs text-slate-400">
-                    {a.class_name ? `فصل ${a.class_name}` : "عام"} · {formatDate(a.created_at)}
+                    {a.class_name ? `فصل ${a.class_name}` : "عام"} · {formatDateTime(a.created_at)}
                   </p>
                 </div>
                 {a.attachment_url && <ExternalLink url={a.attachment_url} label="فتح الرابط" small />}

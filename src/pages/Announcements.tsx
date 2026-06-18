@@ -4,7 +4,7 @@ import { api, ApiClientError, qs } from "../lib/api";
 import { useApiData } from "../lib/useApi";
 import { useAuth } from "../lib/auth";
 import { useToast } from "../lib/toast";
-import { formatDate } from "../lib/labels";
+import { formatDateTime } from "../lib/labels";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, ExternalLink, Field, Input, Modal, PageHeader, Pagination, Select, Spinner, Textarea } from "../components/ui";
 
 export default function Announcements() {
@@ -66,7 +66,7 @@ export default function Announcements() {
                     </div>
                     {a.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{a.body}</p>}
                     <p className="mt-1 text-xs text-slate-400">
-                      {a.author_name ?? ""} · {formatDate(a.created_at)}
+                      {a.author_name ?? ""} · {formatDateTime(a.created_at)}
                     </p>
                   </div>
                 </div>

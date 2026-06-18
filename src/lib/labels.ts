@@ -33,17 +33,31 @@ export const SUBMISSION_LABELS: Record<SubmissionStatus, string> = {
   reviewed: "تمت المراجعة",
 };
 
+// Accepts date-only ("2026-06-18") and SQLite UTC datetimes ("2026-06-18 12:34:56")
+// as well as ISO strings, returning a Date or null if unparseable.
+function parseDate(value: string): Date | null {
+  let iso = value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    iso = `${value}T00:00:00`; // date only → local midnight
+  } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+    iso = `${value.replace(" ", "T")}Z`; // SQLite datetime('now') is UTC
+  }
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
-  try {
-    return new Date(value.includes("T") ? value : `${value}T00:00:00`).toLocaleDateString("ar", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return value;
-  }
+  const d = parseDate(value);
+  if (!d) return value;
+  return d.toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" });
+}
+
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const d = parseDate(value);
+  if (!d) return value;
+  return d.toLocaleString("ar", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export function todayISO(): string {
