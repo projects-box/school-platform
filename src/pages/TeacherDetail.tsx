@@ -18,6 +18,7 @@ export default function TeacherDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [edit, setEdit] = useState({ full_name: "", specialization: "", phone: "", email: "", resource_url: "" });
@@ -97,6 +98,20 @@ export default function TeacherDetail() {
     }
   };
 
+  const reactivate = async () => {
+    setBusy(true);
+    try {
+      await api.patch(`/api/teachers/${t.id}`, { is_active: true });
+      toast("تمت إعادة تفعيل حساب المعلم");
+      reload();
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "حدث خطأ", "error");
+    } finally {
+      setBusy(false);
+      setReactivateOpen(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -104,7 +119,11 @@ export default function TeacherDetail() {
         action={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={openEdit}>تعديل</Button>
-            {!!t.is_active && <Button variant="danger" onClick={() => setDeactivateOpen(true)}>إيقاف الحساب</Button>}
+            {t.is_active ? (
+              <Button variant="danger" onClick={() => setDeactivateOpen(true)}>إيقاف الحساب</Button>
+            ) : (
+              <Button onClick={() => setReactivateOpen(true)}>إعادة التفعيل</Button>
+            )}
           </div>
         }
       />
@@ -239,6 +258,17 @@ export default function TeacherDetail() {
         confirmLabel="إيقاف الحساب"
         onConfirm={deactivate}
         onClose={() => setDeactivateOpen(false)}
+        busy={busy}
+      />
+
+      <ConfirmDialog
+        open={reactivateOpen}
+        title="إعادة تفعيل حساب المعلم"
+        message="سيتمكن المعلم من الدخول للمنصة مرة أخرى. هل أنت متأكد؟"
+        confirmLabel="إعادة التفعيل"
+        confirmVariant="primary"
+        onConfirm={reactivate}
+        onClose={() => setReactivateOpen(false)}
         busy={busy}
       />
     </div>

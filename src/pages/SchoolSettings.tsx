@@ -4,7 +4,7 @@ import { api, ApiClientError } from "../lib/api";
 import { useApiData } from "../lib/useApi";
 import { useToast } from "../lib/toast";
 import { formatDate } from "../lib/labels";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
 
 export default function SchoolSettings() {
   const toast = useToast();
@@ -14,8 +14,31 @@ export default function SchoolSettings() {
 
   const [form, setForm] = useState({ name: "", address: "", phone: "", email: "", website_url: "", general_timetable_url: "" });
   const [busy, setBusy] = useState(false);
-  const [yearModal, setYearModal] = useState(false);
-  const [termModal, setTermModal] = useState(false);
+  const [yearModal, setYearModal] = useState<{ open: boolean; editing: AcademicYear | null }>({ open: false, editing: null });
+  const [termModal, setTermModal] = useState<{ open: boolean; editing: Term | null }>({ open: false, editing: null });
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: "year" | "term"; id: string; name: string } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      await api.delete(`/api/${deleteTarget.kind === "year" ? "academic-years" : "terms"}/${deleteTarget.id}`);
+      toast("تم الحذف بنجاح");
+      if (deleteTarget.kind === "year") {
+        yearsApi.reload();
+        termsApi.reload();
+      } else {
+        termsApi.reload();
+      }
+      schoolApi.reload();
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "حدث خطأ", "error");
+    } finally {
+      setDeleteBusy(false);
+      setDeleteTarget(null);
+    }
+  };
 
   useEffect(() => {
     const s = schoolApi.data?.school;
@@ -113,25 +136,29 @@ export default function SchoolSettings() {
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-bold text-slate-700">السنوات الدراسية</h2>
-          <Button variant="ghost" onClick={() => setYearModal(true)}>+ سنة جديدة</Button>
+          <Button variant="ghost" onClick={() => setYearModal({ open: true, editing: null })}>+ سنة جديدة</Button>
         </div>
         {!yearsApi.data || yearsApi.data.items.length === 0 ? (
           <EmptyState message="لا توجد سنوات دراسية" />
         ) : (
           <div className="space-y-2">
             {yearsApi.data.items.map((y) => (
-              <Card key={y.id} className="flex items-center justify-between gap-2">
+              <Card key={y.id} className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-semibold text-slate-800">{y.name}</p>
                   <p className="text-xs text-slate-400">
                     {formatDate(y.start_date)} — {formatDate(y.end_date)}
                   </p>
                 </div>
-                {y.is_current ? (
-                  <Badge className="bg-teal-100 text-teal-800">السنة الحالية</Badge>
-                ) : (
-                  <Button variant="ghost" onClick={() => setCurrentYear(y)}>تحديد كحالية</Button>
-                )}
+                <div className="flex items-center gap-1">
+                  {y.is_current ? (
+                    <Badge className="bg-teal-100 text-teal-800">السنة الحالية</Badge>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setCurrentYear(y)}>تحديد كحالية</Button>
+                  )}
+                  <Button variant="ghost" onClick={() => setYearModal({ open: true, editing: y })}>تعديل</Button>
+                  <Button variant="ghost" onClick={() => setDeleteTarget({ kind: "year", id: y.id, name: y.name })}>حذف</Button>
+                </div>
               </Card>
             ))}
           </div>
@@ -141,57 +168,80 @@ export default function SchoolSettings() {
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-bold text-slate-700">الفصول الدراسية</h2>
-          <Button variant="ghost" onClick={() => setTermModal(true)}>+ فصل دراسي جديد</Button>
+          <Button variant="ghost" onClick={() => setTermModal({ open: true, editing: null })}>+ فصل دراسي جديد</Button>
         </div>
         {!termsApi.data || termsApi.data.items.length === 0 ? (
           <EmptyState message="لا توجد فصول دراسية" />
         ) : (
           <div className="space-y-2">
             {termsApi.data.items.map((t) => (
-              <Card key={t.id} className="flex items-center justify-between gap-2">
+              <Card key={t.id} className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-semibold text-slate-800">{t.name}</p>
                   <p className="text-xs text-slate-400">
                     {formatDate(t.start_date)} — {formatDate(t.end_date)}
                   </p>
                 </div>
-                {t.is_current ? (
-                  <Badge className="bg-teal-100 text-teal-800">الفصل الحالي</Badge>
-                ) : (
-                  <Button variant="ghost" onClick={() => setCurrentTerm(t)}>تحديد كحالي</Button>
-                )}
+                <div className="flex items-center gap-1">
+                  {t.is_current ? (
+                    <Badge className="bg-teal-100 text-teal-800">الفصل الحالي</Badge>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setCurrentTerm(t)}>تحديد كحالي</Button>
+                  )}
+                  <Button variant="ghost" onClick={() => setTermModal({ open: true, editing: t })}>تعديل</Button>
+                  <Button variant="ghost" onClick={() => setDeleteTarget({ kind: "term", id: t.id, name: t.name })}>حذف</Button>
+                </div>
               </Card>
             ))}
           </div>
         )}
       </section>
 
-      {yearModal && (
+      {yearModal.open && (
         <YearModal
-          onClose={() => setYearModal(false)}
+          editing={yearModal.editing}
+          onClose={() => setYearModal({ open: false, editing: null })}
           onSaved={() => {
-            setYearModal(false);
+            setYearModal({ open: false, editing: null });
             yearsApi.reload();
+            schoolApi.reload();
           }}
         />
       )}
-      {termModal && (
+      {termModal.open && (
         <TermModal
+          editing={termModal.editing}
           years={yearsApi.data?.items ?? []}
-          onClose={() => setTermModal(false)}
+          onClose={() => setTermModal({ open: false, editing: null })}
           onSaved={() => {
-            setTermModal(false);
+            setTermModal({ open: false, editing: null });
             termsApi.reload();
+            schoolApi.reload();
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={`حذف ${deleteTarget?.kind === "year" ? "السنة الدراسية" : "الفصل الدراسي"}`}
+        message={`هل أنت متأكد من حذف "${deleteTarget?.name}"؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmLabel="حذف"
+        onConfirm={confirmDelete}
+        onClose={() => setDeleteTarget(null)}
+        busy={deleteBusy}
+      />
     </div>
   );
 }
 
-function YearModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function YearModal({ editing, onClose, onSaved }: { editing: AcademicYear | null; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: "", start_date: "", end_date: "", is_current: false });
+  const [form, setForm] = useState({
+    name: editing?.name ?? "",
+    start_date: editing?.start_date ?? "",
+    end_date: editing?.end_date ?? "",
+    is_current: !!editing?.is_current,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -199,14 +249,19 @@ function YearModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
     e.preventDefault();
     setBusy(true);
     setError(null);
+    const body = {
+      name: form.name,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      is_current: form.is_current,
+    };
     try {
-      await api.post("/api/academic-years", {
-        name: form.name,
-        start_date: form.start_date || null,
-        end_date: form.end_date || null,
-        is_current: form.is_current,
-      });
-      toast("تمت إضافة السنة الدراسية");
+      if (editing) {
+        await api.patch(`/api/academic-years/${editing.id}`, body);
+      } else {
+        await api.post("/api/academic-years", body);
+      }
+      toast("تم الحفظ بنجاح");
       onSaved();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "حدث خطأ غير متوقع");
@@ -216,7 +271,7 @@ function YearModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
   };
 
   return (
-    <Modal title="سنة دراسية جديدة" open onClose={onClose}>
+    <Modal title={editing ? "تعديل السنة الدراسية" : "سنة دراسية جديدة"} open onClose={onClose}>
       <form onSubmit={submit}>
         <Field label="الاسم" required>
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="2026-2027" required />
@@ -236,21 +291,21 @@ function YearModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
         {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-          <Button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ..." : "إضافة"}</Button>
+          <Button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ..." : editing ? "حفظ" : "إضافة"}</Button>
         </div>
       </form>
     </Modal>
   );
 }
 
-function TermModal({ years, onClose, onSaved }: { years: AcademicYear[]; onClose: () => void; onSaved: () => void }) {
+function TermModal({ editing, years, onClose, onSaved }: { editing: Term | null; years: AcademicYear[]; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const [form, setForm] = useState({
-    name: "",
-    academic_year_id: years.find((y) => y.is_current)?.id ?? "",
-    start_date: "",
-    end_date: "",
-    is_current: false,
+    name: editing?.name ?? "",
+    academic_year_id: editing?.academic_year_id ?? years.find((y) => y.is_current)?.id ?? "",
+    start_date: editing?.start_date ?? "",
+    end_date: editing?.end_date ?? "",
+    is_current: !!editing?.is_current,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -264,14 +319,24 @@ function TermModal({ years, onClose, onSaved }: { years: AcademicYear[]; onClose
     setBusy(true);
     setError(null);
     try {
-      await api.post("/api/terms", {
-        name: form.name,
-        academic_year_id: form.academic_year_id,
-        start_date: form.start_date || null,
-        end_date: form.end_date || null,
-        is_current: form.is_current,
-      });
-      toast("تمت إضافة الفصل الدراسي");
+      if (editing) {
+        // academic_year_id is fixed after creation; only editable fields are sent.
+        await api.patch(`/api/terms/${editing.id}`, {
+          name: form.name,
+          start_date: form.start_date || null,
+          end_date: form.end_date || null,
+          is_current: form.is_current,
+        });
+      } else {
+        await api.post("/api/terms", {
+          name: form.name,
+          academic_year_id: form.academic_year_id,
+          start_date: form.start_date || null,
+          end_date: form.end_date || null,
+          is_current: form.is_current,
+        });
+      }
+      toast("تم الحفظ بنجاح");
       onSaved();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "حدث خطأ غير متوقع");
@@ -281,13 +346,13 @@ function TermModal({ years, onClose, onSaved }: { years: AcademicYear[]; onClose
   };
 
   return (
-    <Modal title="فصل دراسي جديد" open onClose={onClose}>
+    <Modal title={editing ? "تعديل الفصل الدراسي" : "فصل دراسي جديد"} open onClose={onClose}>
       <form onSubmit={submit}>
         <Field label="الاسم" required>
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="الفصل الدراسي الأول" required />
         </Field>
         <Field label="السنة الدراسية" required>
-          <Select value={form.academic_year_id} onChange={(e) => setForm({ ...form, academic_year_id: e.target.value })}>
+          <Select value={form.academic_year_id} onChange={(e) => setForm({ ...form, academic_year_id: e.target.value })} disabled={!!editing}>
             <option value="">اختر...</option>
             {years.map((y) => (
               <option key={y.id} value={y.id}>{y.name}</option>
@@ -309,7 +374,7 @@ function TermModal({ years, onClose, onSaved }: { years: AcademicYear[]; onClose
         {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-          <Button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ..." : "إضافة"}</Button>
+          <Button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ..." : editing ? "حفظ" : "إضافة"}</Button>
         </div>
       </form>
     </Modal>

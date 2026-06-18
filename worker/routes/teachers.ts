@@ -203,3 +203,49 @@ parents.post("/", adminOnly, async (c) => {
     .run();
   return c.json({ id }, 201);
 });
+
+parents.get("/:id", adminOnly, async (c) => {
+  const id = c.req.param("id");
+  const parent = await c.env.DB.prepare(
+    "SELECT id, username, full_name, email, phone, is_active FROM users WHERE id = ? AND role = 'parent'",
+  )
+    .bind(id)
+    .first();
+  if (!parent) throw notFound();
+  const { results: children } = await c.env.DB.prepare(
+    `SELECT l.id AS link_id, l.relationship, s.id AS student_id, u.full_name AS student_name,
+            s.status, c.name AS class_name
+     FROM student_parent_links l
+     JOIN students s ON s.id = l.student_id
+     JOIN users u ON u.id = s.user_id
+     LEFT JOIN classes c ON c.id = s.class_id
+     WHERE l.parent_user_id = ? ORDER BY u.full_name`,
+  )
+    .bind(id)
+    .all();
+  return c.json({ parent, children });
+});
+
+parents.patch("/:id", adminOnly, async (c) => {
+  const id = c.req.param("id");
+  const parent = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND role = 'parent'").bind(id).first();
+  if (!parent) throw notFound();
+  const body = await readBody(c);
+  await c.env.DB.prepare(
+    `UPDATE users SET full_name = COALESCE(?, full_name), email = COALESCE(?, email), phone = COALESCE(?, phone),
+     is_active = COALESCE(?, is_active), updated_at = datetime('now') WHERE id = ?`,
+  )
+    .bind(
+      vStr(body, "full_name", { max: 200 }),
+      vStr(body, "email", { max: 200 }),
+      vStr(body, "phone", { max: 30 }),
+      "is_active" in body ? (body.is_active ? 1 : 0) : null,
+      id,
+    )
+    .run();
+  // If deactivated, drop active sessions so the parent can't keep browsing.
+  if ("is_active" in body && !body.is_active) {
+    await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(id).run();
+  }
+  return c.json({ ok: true });
+});

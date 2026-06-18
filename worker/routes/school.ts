@@ -90,7 +90,12 @@ years.patch("/:id", adminOnly, async (c) => {
 });
 
 years.delete("/:id", adminOnly, async (c) => {
-  const res = await c.env.DB.prepare("DELETE FROM academic_years WHERE id = ?").bind(c.req.param("id")).run();
+  const id = c.req.param("id");
+  const used = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM terms WHERE academic_year_id = ?").bind(id).first<{ n: number }>();
+  if (used && used.n > 0) {
+    return c.json({ error: "لا يمكن حذف السنة الدراسية لوجود فصول دراسية مرتبطة بها — احذف الفصول أولاً" }, 409);
+  }
+  const res = await c.env.DB.prepare("DELETE FROM academic_years WHERE id = ?").bind(id).run();
   if (!res.meta.changes) throw notFound();
   return c.json({ ok: true });
 });
@@ -140,7 +145,12 @@ terms.patch("/:id", adminOnly, async (c) => {
 });
 
 terms.delete("/:id", adminOnly, async (c) => {
-  const res = await c.env.DB.prepare("DELETE FROM terms WHERE id = ?").bind(c.req.param("id")).run();
+  const id = c.req.param("id");
+  const used = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM exams WHERE term_id = ?").bind(id).first<{ n: number }>();
+  if (used && used.n > 0) {
+    return c.json({ error: "لا يمكن حذف الفصل الدراسي لوجود اختبارات مرتبطة به" }, 409);
+  }
+  const res = await c.env.DB.prepare("DELETE FROM terms WHERE id = ?").bind(id).run();
   if (!res.meta.changes) throw notFound();
   return c.json({ ok: true });
 });

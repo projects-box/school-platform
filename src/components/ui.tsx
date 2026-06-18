@@ -157,6 +157,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = "تأكيد",
+  confirmVariant = "danger",
   onConfirm,
   onClose,
   busy,
@@ -165,6 +166,7 @@ export function ConfirmDialog({
   title: string;
   message: string;
   confirmLabel?: string;
+  confirmVariant?: "danger" | "primary";
   onConfirm: () => void;
   onClose: () => void;
   busy?: boolean;
@@ -176,7 +178,7 @@ export function ConfirmDialog({
         <Button variant="secondary" onClick={onClose}>
           إلغاء
         </Button>
-        <Button variant="danger" onClick={onConfirm} disabled={busy}>
+        <Button variant={confirmVariant} onClick={onConfirm} disabled={busy}>
           {busy ? "جارٍ التنفيذ..." : confirmLabel}
         </Button>
       </div>

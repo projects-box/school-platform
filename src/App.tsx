@@ -10,6 +10,8 @@ import Students from "./pages/Students";
 import StudentDetail from "./pages/StudentDetail";
 import Teachers from "./pages/Teachers";
 import TeacherDetail from "./pages/TeacherDetail";
+import Parents from "./pages/Parents";
+import ParentDetail from "./pages/ParentDetail";
 import Classes from "./pages/Classes";
 import Subjects from "./pages/Subjects";
 import Attendance from "./pages/Attendance";
@@ -82,6 +84,22 @@ export default function App() {
           element={
             <RequireRole roles={ADMINS}>
               <TeacherDetail />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/parents"
+          element={
+            <RequireRole roles={ADMINS}>
+              <Parents />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/parents/:id"
+          element={
+            <RequireRole roles={ADMINS}>
+              <ParentDetail />
             </RequireRole>
           }
         />
