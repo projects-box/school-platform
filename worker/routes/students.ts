@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../lib/app";
 import { assertCanViewStudent, inPlaceholders, isAdmin, teacherScope } from "../lib/app";
 import { badRequest, forbidden, notFound, paginated, pagination, readBody, uid, vDate, vEnum, vStr, vUrl } from "../lib/http";
-import { hashPassword } from "../lib/auth";
+import { buildCredentialUpdates, hashPassword } from "../lib/auth";
 import { requireRole } from "../middleware";
 
 const adminOnly = requireRole("super_admin", "school_admin");
@@ -163,6 +163,10 @@ students.patch("/:id", adminOnly, async (c) => {
       .bind(fullName, statusVal ? (statusVal === "active" ? 1 : 0) : null, student.user_id)
       .run();
   }
+
+  const credStmts = await buildCredentialUpdates(c.env.DB, student.user_id, body);
+  if (credStmts.length) await c.env.DB.batch(credStmts);
+
   return c.json({ ok: true });
 });
 

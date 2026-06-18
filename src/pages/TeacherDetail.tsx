@@ -21,7 +21,7 @@ export default function TeacherDetail() {
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ full_name: "", specialization: "", phone: "", email: "", resource_url: "" });
+  const [edit, setEdit] = useState({ full_name: "", specialization: "", phone: "", email: "", resource_url: "", username: "", new_password: "" });
   const [assign, setAssign] = useState({ class_id: "", subject_id: "" });
 
   if (loading) return <Spinner />;
@@ -36,6 +36,8 @@ export default function TeacherDetail() {
       phone: t.phone ?? "",
       email: t.email ?? "",
       resource_url: t.resource_url ?? "",
+      username: t.username ?? "",
+      new_password: "",
     });
     setFormError(null);
     setEditOpen(true);
@@ -52,6 +54,8 @@ export default function TeacherDetail() {
         phone: edit.phone || null,
         email: edit.email || null,
         resource_url: edit.resource_url || null,
+        username: edit.username,
+        new_password: edit.new_password || null,
       });
       toast("تم حفظ التعديلات");
       setEditOpen(false);
@@ -217,6 +221,15 @@ export default function TeacherDetail() {
           <Field label="رابط الموارد (خارجي)">
             <Input type="url" value={edit.resource_url} onChange={(e) => setEdit({ ...edit, resource_url: e.target.value })} dir="ltr" placeholder="https://" />
           </Field>
+          <div className="my-3 border-t border-slate-100 pt-3">
+            <p className="mb-2 text-sm font-semibold text-slate-600">بيانات الدخول</p>
+            <Field label="اسم المستخدم" required>
+              <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} dir="ltr" required autoComplete="off" />
+            </Field>
+            <Field label="كلمة مرور جديدة" hint="اتركها فارغة لإبقاء كلمة المرور الحالية — 8 أحرف على الأقل">
+              <Input type="text" value={edit.new_password} onChange={(e) => setEdit({ ...edit, new_password: e.target.value })} dir="ltr" autoComplete="new-password" placeholder="••••••••" />
+            </Field>
+          </div>
           {formError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>إلغاء</Button>

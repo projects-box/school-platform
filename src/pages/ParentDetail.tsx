@@ -26,7 +26,7 @@ export default function ParentDetail() {
   const [unlinkTarget, setUnlinkTarget] = useState<ParentChild | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ full_name: "", email: "", phone: "" });
+  const [edit, setEdit] = useState({ full_name: "", email: "", phone: "", username: "", new_password: "" });
 
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
@@ -34,7 +34,7 @@ export default function ParentDetail() {
   const p = data.parent;
 
   const openEdit = () => {
-    setEdit({ full_name: p.full_name, email: p.email ?? "", phone: p.phone ?? "" });
+    setEdit({ full_name: p.full_name, email: p.email ?? "", phone: p.phone ?? "", username: p.username ?? "", new_password: "" });
     setFormError(null);
     setEditOpen(true);
   };
@@ -48,6 +48,8 @@ export default function ParentDetail() {
         full_name: edit.full_name,
         email: edit.email || null,
         phone: edit.phone || null,
+        username: edit.username,
+        new_password: edit.new_password || null,
       });
       toast("تم حفظ التعديلات");
       setEditOpen(false);
@@ -163,6 +165,15 @@ export default function ParentDetail() {
             </Field>
             <Field label="البريد الإلكتروني">
               <Input type="email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} dir="ltr" />
+            </Field>
+          </div>
+          <div className="my-3 border-t border-slate-100 pt-3">
+            <p className="mb-2 text-sm font-semibold text-slate-600">بيانات الدخول</p>
+            <Field label="اسم المستخدم" required>
+              <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} dir="ltr" required autoComplete="off" />
+            </Field>
+            <Field label="كلمة مرور جديدة" hint="اتركها فارغة لإبقاء كلمة المرور الحالية — 8 أحرف على الأقل">
+              <Input type="text" value={edit.new_password} onChange={(e) => setEdit({ ...edit, new_password: e.target.value })} dir="ltr" autoComplete="new-password" placeholder="••••••••" />
             </Field>
           </div>
           {formError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}

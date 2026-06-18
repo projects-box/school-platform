@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../lib/app";
 import { badRequest, notFound, paginated, pagination, readBody, uid, vStr, vUrl } from "../lib/http";
-import { hashPassword } from "../lib/auth";
+import { buildCredentialUpdates, hashPassword } from "../lib/auth";
 import { requireRole } from "../middleware";
 
 const adminOnly = requireRole("super_admin", "school_admin");
@@ -114,6 +114,10 @@ teachers.patch("/:id", adminOnly, async (c) => {
       teacher.user_id,
     )
     .run();
+
+  const credStmts = await buildCredentialUpdates(c.env.DB, teacher.user_id, body);
+  if (credStmts.length) await c.env.DB.batch(credStmts);
+
   return c.json({ ok: true });
 });
 
@@ -247,5 +251,9 @@ parents.patch("/:id", adminOnly, async (c) => {
   if ("is_active" in body && !body.is_active) {
     await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(id).run();
   }
+
+  const credStmts = await buildCredentialUpdates(c.env.DB, id, body);
+  if (credStmts.length) await c.env.DB.batch(credStmts);
+
   return c.json({ ok: true });
 });

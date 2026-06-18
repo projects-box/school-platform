@@ -1,4 +1,5 @@
 import type { SafeUser } from "../../shared/types";
+import { badRequest, vStr } from "./http";
 
 const PBKDF2_ITERATIONS = 100_000;
 const SESSION_DAYS = 7;
@@ -46,6 +47,38 @@ export async function verifyPassword(password: string, stored: string): Promise<
   let diff = 0;
   for (let i = 0; i < bits.length; i++) diff |= bits[i] ^ expected[i];
   return diff === 0;
+}
+
+/**
+ * Builds prepared statements for admin-initiated credential changes (username
+ * and/or password reset) on a user row. Validates username uniqueness and
+ * password length (throws ApiError on invalid input). A password reset also
+ * invalidates the user's existing sessions. Returns [] when nothing changed.
+ */
+export async function buildCredentialUpdates(
+  db: D1Database,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<D1PreparedStatement[]> {
+  const stmts: D1PreparedStatement[] = [];
+
+  if ("username" in body) {
+    const username = vStr(body, "username", { required: true, max: 100 })!.toLowerCase();
+    const clash = await db.prepare("SELECT id FROM users WHERE username = ? AND id != ?").bind(username, userId).first();
+    if (clash) throw badRequest("اسم المستخدم مستخدم مسبقاً");
+    stmts.push(db.prepare("UPDATE users SET username = ?, updated_at = datetime('now') WHERE id = ?").bind(username, userId));
+  }
+
+  const newPassword = vStr(body, "new_password", { max: 200 });
+  if (newPassword) {
+    if (newPassword.length < 8) throw badRequest("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");
+    const hash = await hashPassword(newPassword);
+    stmts.push(db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").bind(hash, userId));
+    // Reset by an admin: drop existing sessions so the old password can't keep a session alive.
+    stmts.push(db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId));
+  }
+
+  return stmts;
 }
 
 export async function sha256Hex(value: string): Promise<string> {

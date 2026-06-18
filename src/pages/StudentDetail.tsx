@@ -24,7 +24,7 @@ export default function StudentDetail() {
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ full_name: "", class_id: "", status: "", student_number: "", document_url: "" });
+  const [edit, setEdit] = useState({ full_name: "", class_id: "", status: "", student_number: "", document_url: "", username: "", new_password: "" });
 
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
@@ -38,6 +38,8 @@ export default function StudentDetail() {
       status: s.status,
       student_number: s.student_number ?? "",
       document_url: s.document_url ?? "",
+      username: s.username ?? "",
+      new_password: "",
     });
     setFormError(null);
     setEditOpen(true);
@@ -54,6 +56,8 @@ export default function StudentDetail() {
         status: edit.status,
         student_number: edit.student_number || null,
         document_url: edit.document_url || null,
+        username: edit.username,
+        new_password: edit.new_password || null,
       });
       toast("تم حفظ التعديلات");
       setEditOpen(false);
@@ -218,6 +222,15 @@ export default function StudentDetail() {
           <Field label="رابط المستندات (خارجي)" hint="لا يتم رفع ملفات — روابط خارجية فقط">
             <Input type="url" value={edit.document_url} onChange={(e) => setEdit({ ...edit, document_url: e.target.value })} dir="ltr" placeholder="https://" />
           </Field>
+          <div className="my-3 border-t border-slate-100 pt-3">
+            <p className="mb-2 text-sm font-semibold text-slate-600">بيانات الدخول</p>
+            <Field label="اسم المستخدم" required>
+              <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} dir="ltr" required autoComplete="off" />
+            </Field>
+            <Field label="كلمة مرور جديدة" hint="اتركها فارغة لإبقاء كلمة المرور الحالية — 8 أحرف على الأقل">
+              <Input type="text" value={edit.new_password} onChange={(e) => setEdit({ ...edit, new_password: e.target.value })} dir="ltr" autoComplete="new-password" placeholder="••••••••" />
+            </Field>
+          </div>
           {formError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>إلغاء</Button>
