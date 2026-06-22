@@ -6,7 +6,7 @@ Handover notes for the next developer. Read this together with `README.md` (setu
 
 | What | Where |
 |---|---|
-| Production app | https://school-platform.helaltech-com.workers.dev |
+| Production app | https://school-platform.ruqa-tech.workers.dev |
 | GitHub repo | https://github.com/projects-box/school-platform (org: `projects-box`, branch: `main`) |
 | Cloudflare dashboard | https://dash.cloudflare.com → Workers & Pages → `school-platform` |
 | Original product spec | `prompt.md` in the repo root |
