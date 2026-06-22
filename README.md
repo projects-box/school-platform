@@ -11,7 +11,7 @@ A single Cloudflare Worker serves both the static SPA (via Workers Static Assets
 - **School setup** — school profile, academic years, terms, grade levels, classes, subjects.
 - **Students** — CRUD (delete = deactivate, history kept), class assignment, parent linking, external document URLs.
 - **Teachers** — CRUD (delete = deactivate), class/subject assignments, external resource URLs.
-- **Attendance** — teachers mark attendance per class/date (bulk upsert); reports with filters, pagination and summaries; parents/students see only their own data.
+- **Attendance** — configurable school-wide between **daily** (one record per student per day) and **per-session** (per lecture: the teacher picks the period `1..N` and an optional subject). Teachers mark attendance per class/date/session (bulk upsert); reports with filters, pagination and summaries; parents/students see only their own data.
 - **Grades & exams** — exams per class/subject, bulk marks entry, automatic percentage + Arabic grade label (ممتاز/جيد جداً/جيد/مقبول/راسب).
 - **Assignments** — teacher creates per class; students submit **text or external link only** (no uploads); teacher reviews with feedback.
 - **Announcements** — general (admin) or class-specific (teacher, own classes only), with external attachment links.

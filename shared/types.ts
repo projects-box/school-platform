@@ -24,7 +24,11 @@ export interface School {
   email: string | null;
   website_url: string | null;
   general_timetable_url: string | null;
+  attendance_mode: AttendanceMode;
+  sessions_per_day: number;
 }
+
+export type AttendanceMode = "daily" | "per_session";
 
 export interface AcademicYear {
   id: string;
@@ -120,10 +124,13 @@ export interface AttendanceRecord {
   student_id: string;
   class_id: string;
   date: string;
+  session_no: number;
+  subject_id: string | null;
   status: AttendanceStatus;
   note: string | null;
   student_name?: string;
   class_name?: string;
+  subject_name?: string | null;
 }
 
 export interface AttendanceSummary {

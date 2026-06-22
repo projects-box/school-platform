@@ -12,7 +12,7 @@ export default function SchoolSettings() {
   const yearsApi = useApiData<{ items: AcademicYear[] }>("/api/academic-years");
   const termsApi = useApiData<{ items: Term[] }>("/api/terms");
 
-  const [form, setForm] = useState({ name: "", address: "", phone: "", email: "", website_url: "", general_timetable_url: "" });
+  const [form, setForm] = useState({ name: "", address: "", phone: "", email: "", website_url: "", general_timetable_url: "", attendance_mode: "daily", sessions_per_day: "6" });
   const [busy, setBusy] = useState(false);
   const [yearModal, setYearModal] = useState<{ open: boolean; editing: AcademicYear | null }>({ open: false, editing: null });
   const [termModal, setTermModal] = useState<{ open: boolean; editing: Term | null }>({ open: false, editing: null });
@@ -50,6 +50,8 @@ export default function SchoolSettings() {
         email: s.email ?? "",
         website_url: s.website_url ?? "",
         general_timetable_url: s.general_timetable_url ?? "",
+        attendance_mode: s.attendance_mode ?? "daily",
+        sessions_per_day: String(s.sessions_per_day ?? 6),
       });
     }
   }, [schoolApi.data]);
@@ -69,6 +71,23 @@ export default function SchoolSettings() {
         general_timetable_url: form.general_timetable_url || null,
       });
       toast("تم حفظ بيانات المدرسة");
+      schoolApi.reload();
+    } catch (err) {
+      toast(err instanceof ApiClientError ? err.message : "حدث خطأ", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveAttendance = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.patch("/api/school", {
+        attendance_mode: form.attendance_mode,
+        sessions_per_day: Number(form.sessions_per_day) || 6,
+      });
+      toast("تم حفظ إعدادات الحضور");
       schoolApi.reload();
     } catch (err) {
       toast(err instanceof ApiClientError ? err.message : "حدث خطأ", "error");
@@ -130,6 +149,25 @@ export default function SchoolSettings() {
             <Input type="url" value={form.general_timetable_url} onChange={set("general_timetable_url")} dir="ltr" placeholder="https://" />
           </Field>
           <Button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ..." : "حفظ"}</Button>
+        </form>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-bold text-slate-700">إعدادات الحضور</h2>
+        <p className="mb-3 text-xs text-slate-400">حدد طريقة تسجيل الحضور: مرة واحدة يومياً، أو لكل حصة على حدة.</p>
+        <form onSubmit={saveAttendance}>
+          <Field label="نظام الحضور">
+            <Select value={form.attendance_mode} onChange={set("attendance_mode")}>
+              <option value="daily">يومي (مرة واحدة في اليوم)</option>
+              <option value="per_session">لكل حصة (تحضير كل حصة على حدة)</option>
+            </Select>
+          </Field>
+          {form.attendance_mode === "per_session" && (
+            <Field label="عدد الحصص في اليوم" hint="من 1 إلى 12">
+              <Input type="number" value={form.sessions_per_day} onChange={set("sessions_per_day")} min={1} max={12} />
+            </Field>
+          )}
+          <Button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ..." : "حفظ إعدادات الحضور"}</Button>
         </form>
       </Card>
 

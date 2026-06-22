@@ -1,12 +1,12 @@
 import { Hono } from "hono";
-import type { AppEnv } from "../lib/app";
+import type { AppContext, AppEnv } from "../lib/app";
 import { inPlaceholders, isAdmin, parentStudents, studentScope, teacherScope } from "../lib/app";
 import type { AttendanceStatus } from "../../shared/types";
 import { badRequest, forbidden, paginated, pagination, readBody, uid, vDate } from "../lib/http";
 
 const STATUSES: AttendanceStatus[] = ["present", "absent", "late", "excused"];
 
-async function assertCanManageClass(c: Parameters<typeof teacherScope>[0], classId: string): Promise<string | null> {
+async function assertCanManageClass(c: AppContext, classId: string): Promise<string | null> {
   if (isAdmin(c)) return null;
   if (c.get("user").role === "teacher") {
     const scope = await teacherScope(c);
@@ -16,35 +16,66 @@ async function assertCanManageClass(c: Parameters<typeof teacherScope>[0], class
   throw forbidden();
 }
 
+async function attendanceConfig(c: AppContext): Promise<{ mode: "daily" | "per_session"; sessionsPerDay: number }> {
+  const row = await c.env.DB.prepare("SELECT attendance_mode, sessions_per_day FROM schools LIMIT 1").first<{
+    attendance_mode: "daily" | "per_session";
+    sessions_per_day: number;
+  }>();
+  return { mode: row?.attendance_mode ?? "daily", sessionsPerDay: row?.sessions_per_day ?? 6 };
+}
+
+// Resolves the session number for a request given the school mode.
+// Daily mode always uses 0; per-session requires a valid session in 1..N.
+function resolveSession(raw: string | number | undefined, mode: "daily" | "per_session", sessionsPerDay: number): number {
+  if (mode === "daily") return 0;
+  const n = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+  if (!Number.isInteger(n) || n < 1 || n > sessionsPerDay) throw badRequest("يجب تحديد الحصة");
+  return n;
+}
+
 const attendance = new Hono<AppEnv>();
 
-// Roster of a class for a given date, with any recorded statuses.
+// Roster of a class for a given date (and session, in per-session mode),
+// with any recorded statuses for that session.
 attendance.get("/", async (c) => {
   const classId = c.req.query("class_id");
   const date = c.req.query("date");
   if (!classId || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw badRequest("يجب تحديد الفصل والتاريخ");
   await assertCanManageClass(c, classId);
+  const cfg = await attendanceConfig(c);
+  const sessionNo = resolveSession(c.req.query("session"), cfg.mode, cfg.sessionsPerDay);
   const { results } = await c.env.DB.prepare(
     `SELECT s.id AS student_id, u.full_name AS student_name, s.student_number,
-            a.id AS record_id, a.status, a.note
+            a.id AS record_id, a.status, a.note, a.subject_id
      FROM students s
      JOIN users u ON u.id = s.user_id
-     LEFT JOIN attendance_records a ON a.student_id = s.id AND a.date = ?
+     LEFT JOIN attendance_records a ON a.student_id = s.id AND a.date = ? AND a.session_no = ?
      WHERE s.class_id = ? AND s.status = 'active'
      ORDER BY u.full_name`,
   )
-    .bind(date, classId)
+    .bind(date, sessionNo, classId)
     .all();
-  return c.json({ items: results, class_id: classId, date });
+  return c.json({ items: results, class_id: classId, date, session_no: sessionNo, mode: cfg.mode });
 });
 
-// Bulk upsert attendance for a class/date.
+// Bulk upsert attendance for a class/date (and session, in per-session mode).
 attendance.post("/", async (c) => {
   const body = await readBody(c);
   const classId = (body.class_id as string) || "";
   const date = vDate(body, "date", { required: true })!;
   if (!classId) throw badRequest("الحقل مطلوب: class_id");
   await assertCanManageClass(c, classId);
+
+  const cfg = await attendanceConfig(c);
+  const sessionNo = resolveSession(body.session_no as string | number | undefined, cfg.mode, cfg.sessionsPerDay);
+
+  // Optional subject for the session (per-session mode only); must exist if given.
+  let subjectId: string | null = null;
+  if (cfg.mode === "per_session" && body.subject_id) {
+    subjectId = String(body.subject_id);
+    const exists = await c.env.DB.prepare("SELECT id FROM subjects WHERE id = ?").bind(subjectId).first();
+    if (!exists) throw badRequest("المادة غير موجودة");
+  }
 
   const records = body.records;
   if (!Array.isArray(records) || records.length === 0 || records.length > 200) {
@@ -69,12 +100,12 @@ attendance.post("/", async (c) => {
     if (!STATUSES.includes(status as AttendanceStatus)) throw badRequest("حالة حضور غير صالحة");
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO attendance_records (id, student_id, class_id, date, status, note, recorded_by)
-         VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(student_id, date) DO UPDATE SET
+        `INSERT INTO attendance_records (id, student_id, class_id, date, session_no, subject_id, status, note, recorded_by)
+         VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(student_id, date, session_no) DO UPDATE SET
            status = excluded.status, note = excluded.note, recorded_by = excluded.recorded_by,
-           class_id = excluded.class_id, updated_at = datetime('now')`,
-      ).bind(uid(), studentId, classId, date, status, note, userId),
+           subject_id = excluded.subject_id, class_id = excluded.class_id, updated_at = datetime('now')`,
+      ).bind(uid(), studentId, classId, date, sessionNo, subjectId, status, note, userId),
     );
   }
   await c.env.DB.batch(stmts);
@@ -144,13 +175,14 @@ attendance.get("/reports", async (c) => {
     .first<{ n: number; present: number; absent: number; late: number; excused: number }>();
 
   const { results } = await c.env.DB.prepare(
-    `SELECT a.id, a.student_id, a.class_id, a.date, a.status, a.note,
-            u.full_name AS student_name, c2.name AS class_name
+    `SELECT a.id, a.student_id, a.class_id, a.date, a.session_no, a.subject_id, a.status, a.note,
+            u.full_name AS student_name, c2.name AS class_name, subj.name AS subject_name
      FROM attendance_records a
      JOIN students s ON s.id = a.student_id
      JOIN users u ON u.id = s.user_id
      JOIN classes c2 ON c2.id = a.class_id
-     ${where} ORDER BY a.date DESC, u.full_name LIMIT ? OFFSET ?`,
+     LEFT JOIN subjects subj ON subj.id = a.subject_id
+     ${where} ORDER BY a.date DESC, a.session_no, u.full_name LIMIT ? OFFSET ?`,
   )
     .bind(...vals, perPage, offset)
     .all();

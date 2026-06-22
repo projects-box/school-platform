@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { AttendanceRecord, AttendanceStatus, AttendanceSummary, ClassRoom, Paginated } from "../../shared/types";
+import type { AttendanceRecord, AttendanceStatus, AttendanceSummary, ClassRoom, Paginated, School, Subject } from "../../shared/types";
 import { api, ApiClientError, qs } from "../lib/api";
 import { useApiData } from "../lib/useApi";
 import { useAuth } from "../lib/auth";
@@ -17,6 +17,7 @@ interface RosterRow {
   record_id: string | null;
   status: AttendanceStatus | null;
   note: string | null;
+  subject_id: string | null;
 }
 
 export default function Attendance() {
@@ -47,12 +48,31 @@ function MarkAttendance({ initialClassId }: { initialClassId: string }) {
   const toast = useToast();
   const [classId, setClassId] = useState(initialClassId);
   const [date, setDate] = useState(todayISO());
+  const [session, setSession] = useState(1);
+  const [subjectId, setSubjectId] = useState("");
   const [edits, setEdits] = useState<Record<string, AttendanceStatus>>({});
   const [busy, setBusy] = useState(false);
 
+  const { data: schoolData } = useApiData<{ school: School }>("/api/school");
+  const mode = schoolData?.school.attendance_mode ?? "daily";
+  const sessionsPerDay = schoolData?.school.sessions_per_day ?? 6;
+  const perSession = mode === "per_session";
+
   const { data: classesData } = useApiData<{ items: ClassRoom[] }>("/api/classes");
-  const rosterPath = classId && date ? `/api/attendance${qs({ class_id: classId, date })}` : null;
+  const { data: subjectsData } = useApiData<{ items: Subject[] }>(perSession ? "/api/subjects" : null);
+
+  const rosterPath =
+    classId && date ? `/api/attendance${qs({ class_id: classId, date, session: perSession ? session : undefined })}` : null;
   const { data: roster, loading, error, reload } = useApiData<{ items: RosterRow[] }>(rosterPath);
+
+  // Reset chosen subject when the marking context changes; then prefill from any saved session.
+  useEffect(() => {
+    setSubjectId("");
+  }, [classId, date, session]);
+  useEffect(() => {
+    const existing = roster?.items.find((r) => r.subject_id)?.subject_id;
+    if (existing) setSubjectId(existing);
+  }, [roster]);
 
   const setStatus = (studentId: string, status: AttendanceStatus) => setEdits((e) => ({ ...e, [studentId]: status }));
 
@@ -76,7 +96,13 @@ function MarkAttendance({ initialClassId }: { initialClassId: string }) {
     }
     setBusy(true);
     try {
-      await api.post("/api/attendance", { class_id: classId, date, records });
+      await api.post("/api/attendance", {
+        class_id: classId,
+        date,
+        session_no: perSession ? session : 0,
+        subject_id: perSession ? subjectId || null : null,
+        records,
+      });
       toast("تم حفظ الحضور بنجاح");
       setEdits({});
       reload();
@@ -97,6 +123,26 @@ function MarkAttendance({ initialClassId }: { initialClassId: string }) {
           ))}
         </Select>
         <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setEdits({}); }} className="!w-auto" />
+        {perSession && (
+          <>
+            <Select
+              value={session}
+              onChange={(e) => { setSession(Number(e.target.value)); setEdits({}); }}
+              className="!w-auto"
+              aria-label="الحصة"
+            >
+              {Array.from({ length: sessionsPerDay }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>الحصة {n}</option>
+              ))}
+            </Select>
+            <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className="!w-auto" aria-label="المادة">
+              <option value="">بدون مادة</option>
+              {subjectsData?.items.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </Select>
+          </>
+        )}
       </div>
 
       {!classId ? (
@@ -209,6 +255,8 @@ function Reports({ canFilter }: { canFilter: boolean }) {
                       <p className="font-semibold text-slate-800">{r.student_name}</p>
                       <p className="text-xs text-slate-400">
                         {r.class_name} · {formatDate(r.date)}
+                        {r.session_no > 0 ? ` · الحصة ${r.session_no}` : ""}
+                        {r.subject_name ? ` · ${r.subject_name}` : ""}
                         {r.note ? ` · ${r.note}` : ""}
                       </p>
                     </div>

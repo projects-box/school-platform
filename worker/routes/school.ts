@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../lib/app";
-import { notFound, readBody, uid, vDate, vNum, vStr, vUrl } from "../lib/http";
+import { notFound, readBody, uid, vDate, vEnum, vNum, vStr, vUrl } from "../lib/http";
 import { requireRole } from "../middleware";
 
 const adminOnly = requireRole("super_admin", "school_admin");
@@ -10,7 +10,7 @@ export const school = new Hono<AppEnv>();
 
 school.get("/", async (c) => {
   const row = await c.env.DB.prepare(
-    "SELECT id, name, address, phone, email, website_url, general_timetable_url FROM schools LIMIT 1",
+    "SELECT id, name, address, phone, email, website_url, general_timetable_url, attendance_mode, sessions_per_day FROM schools LIMIT 1",
   ).first();
   if (!row) throw notFound();
   const year = await c.env.DB.prepare(
@@ -33,6 +33,8 @@ school.patch("/", adminOnly, async (c) => {
     email: vStr(body, "email", { max: 200 }),
     website_url: vUrl(body, "website_url"),
     general_timetable_url: vUrl(body, "general_timetable_url"),
+    attendance_mode: vEnum(body, "attendance_mode", ["daily", "per_session"] as const),
+    sessions_per_day: vNum(body, "sessions_per_day", { min: 1, max: 12 }),
   };
   const sets: string[] = [];
   const vals: unknown[] = [];
